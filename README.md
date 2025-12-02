@@ -257,6 +257,199 @@ Launch a local Kubernetes cluster with one of the following tools:
 If you've deployed the application with `skaffold run` command, you can run
 `skaffold delete` to clean up the deployed resources.
 
+
+## Datadog Monitoring Setup
+
+Monitor your Swagstore application with Datadog for APM, logging, and infrastructure metrics.
+
+### Prerequisites
+
+- Active Datadog account (sign up at [datadoghq.com](https://www.datadoghq.com))
+- Datadog API Key and APP Key (get from [Datadog API Keys page](https://app.datadoghq.com/organization-settings/api-keys))
+- Helm 3.x installed
+- Running Kubernetes cluster (Docker Desktop, Minikube, Kind, or GKE)
+
+### Step 1: Add Datadog Helm Repository
+
+```bash
+helm repo add datadog https://helm.datadoghq.com
+helm repo update
+```
+
+### Step 2: Create Datadog Configuration File
+
+Create a `values.yaml` file with your Datadog configuration:
+
+```yaml
+datadog:
+  # Your Datadog API keys (replace with actual values)
+  apiKey: <YOUR_DATADOG_API_KEY>
+  appKey: <YOUR_DATADOG_APP_KEY>
+  
+  # Set the Kubernetes cluster name
+  clusterName: docker-desktop-local  # Change for your environment
+  
+  # Datadog site (US1)
+  site: datadoghq.com
+  
+  ## Enable APM agent for tracing
+  apm:
+    portEnabled: true
+    socketPath: /var/run/datadog/apm.socket
+  
+  ## Enable log collection
+  logs:
+    enabled: true
+    containerCollectAll: true
+  
+  networkMonitoring:
+    enabled: false
+  
+  # Required for Docker Desktop - collect container stats
+  criSocketPath: /host/var/run/containerd/containerd.sock
+  
+  # Tags for identification
+  tags:
+    - "env:local"
+    - "platform:docker-desktop"
+
+clusterAgent:
+  enabled: true
+  replicas: 1
+
+agents:
+  # Use host name for hostname detection
+  useHostName: true
+```
+
+### Step 3: Install Datadog Agent
+
+**For Docker Desktop / Local Kubernetes:**
+
+```bash
+helm install datadog-agent -f values.yaml \
+  --set targetSystem=linux \
+  --set datadog.kubeStateMetricsEnabled=false \
+  --set 'datadog.env[0].name=DD_HOSTNAME' \
+  --set 'datadog.env[0].value=docker-desktop' \
+  datadog/datadog
+```
+
+**For Minikube:**
+
+```bash
+helm install datadog-agent -f values.yaml \
+  --set targetSystem=linux \
+  --set datadog.kubeStateMetricsEnabled=false \
+  --set 'datadog.env[0].name=DD_HOSTNAME' \
+  --set 'datadog.env[0].value=minikube' \
+  datadog/datadog
+```
+
+**For GKE:**
+
+```bash
+helm install datadog-agent -f values.yaml \
+  --set targetSystem=linux \
+  datadog/datadog
+```
+
+### Step 4: Verify Installation
+
+Check that both Datadog agent pods are running:
+
+```bash
+kubectl get pods | grep datadog
+```
+
+Expected output:
+```
+datadog-agent-cluster-agent-xxxxxxxxxx-xxxxx   1/1     Running   0          2m
+datadog-agent-xxxxx                            2/2     Running   0          2m
+```
+
+Check logs if there are issues:
+
+```bash
+# Check cluster agent logs
+kubectl logs -l app=datadog-agent-cluster-agent
+
+# Check node agent logs
+kubectl logs -l app=datadog-agent -c agent
+```
+
+### Step 5: Deploy Swagstore Application
+
+After Datadog agent is running, deploy the application:
+
+```bash
+# For ARM64 (Mac M1/M2/M3/M4)
+skaffold run --default-repo docker.io/yourusername --platform=linux/arm64
+
+# For AMD64 (Intel Mac/PC)
+skaffold run --default-repo docker.io/yourusername --platform=linux/amd64
+```
+
+### Step 6: View Data in Datadog
+
+Once the application is deployed and running:
+
+1. **APM Traces**: Visit [Datadog APM](https://app.datadoghq.com/apm/traces)
+2. **Logs**: Visit [Datadog Log Explorer](https://app.datadoghq.com/logs)
+3. **Infrastructure**: Visit [Datadog Infrastructure](https://app.datadoghq.com/infrastructure)
+4. **Service Map**: Visit [Datadog Service Map](https://app.datadoghq.com/apm/map)
+
+### Troubleshooting
+
+**Agent CrashLoopBackOff - Hostname Error:**
+
+This is common with Docker Desktop. The fix is to set a hardcoded hostname:
+
+```bash
+helm upgrade datadog-agent -f values.yaml \
+  --set 'datadog.env[0].name=DD_HOSTNAME' \
+  --set 'datadog.env[0].value=docker-desktop' \
+  datadog/datadog
+```
+
+**Agent CrashLoopBackOff - Missing API Key:**
+
+Ensure your API key is correctly set in `values.yaml`. The agent logs will show:
+```
+You must set an DD_API_KEY environment variable
+```
+
+Fix: Update `values.yaml` with correct API key and upgrade:
+```bash
+helm upgrade datadog-agent -f values.yaml datadog/datadog
+```
+
+**ImagePullBackOff:**
+
+If you have network issues pulling Datadog images, check Docker Hub connectivity:
+```bash
+docker pull gcr.io/datadoghq/agent:latest
+```
+
+### Cleanup Datadog
+
+To remove Datadog agent:
+
+```bash
+helm uninstall datadog-agent
+```
+
+### Advanced Configuration
+
+For production deployments, consider:
+
+1. **High Availability**: Set `clusterAgent.replicas: 2`
+2. **Enable Network Performance Monitoring**: Set `datadog.networkMonitoring.enabled: true`
+3. **Enable Process Collection**: Add `datadog.processAgent.enabled: true`
+4. **Use Kubernetes Secrets**: Store API keys securely
+
+See the [Datadog Kubernetes documentation](https://docs.datadoghq.com/containers/kubernetes/) for more details.
+
   
 ## Option 2: Google Kubernetes Engine (GKE)
 
