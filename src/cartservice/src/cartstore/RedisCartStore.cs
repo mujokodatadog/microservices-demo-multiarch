@@ -34,6 +34,14 @@ namespace cartservice.cartstore
         {
             Console.WriteLine($"AddItemAsync called with userId={userId}, productId={productId}, quantity={quantity}");
 
+            // LAB: Simulate latency issue for Datadog APM testing
+            var simulateLatency = Environment.GetEnvironmentVariable("SIMULATE_LATENCY_MS");
+            if (!string.IsNullOrEmpty(simulateLatency) && int.TryParse(simulateLatency, out int delayMs))
+            {
+                Console.WriteLine($"[LAB] Simulating {delayMs}ms latency in AddItem operation");
+                await Task.Delay(delayMs);
+            }
+
             try
             {
                 Hipstershop.Cart cart;

@@ -80,10 +80,10 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 64Mi
+            memory: 128Mi  # Increased for Datadog APM injection
           limits:
             cpu: 200m
-            memory: 128Mi
+            memory: 256Mi  # Increased for Datadog APM injection
 ---
 apiVersion: v1
 kind: Service

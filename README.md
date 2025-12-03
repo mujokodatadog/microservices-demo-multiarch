@@ -317,6 +317,9 @@ If you've deployed the application with `skaffold run` command, you can run
 
 Monitor your Swagstore application with Datadog for APM, logging, and infrastructure metrics.
 
+**⚠️ IMPORTANT - Deployment Order:**  
+You MUST install and configure Datadog BEFORE deploying your application. If the application starts before Datadog is ready, the Admission Controller cannot inject the necessary environment variables, and you won't see traces or proper logs. If you've already deployed the app, you'll need to restart the pods after Datadog is configured (see Step 6).
+
 ### Prerequisites
 
 - Active Datadog account (sign up at [datadoghq.com](https://www.datadoghq.com))
@@ -433,19 +436,91 @@ kubectl logs -l app=datadog-agent-cluster-agent
 kubectl logs -l app=datadog-agent -c agent
 ```
 
-### Step 5: Deploy Swagstore Application
+### Step 5: Enable Admission Controller (Required for APM)
 
-After Datadog agent is running, deploy the application:
+The Admission Controller automatically injects Datadog tracing libraries into your application pods. Update your `values.yaml`:
+
+```yaml
+clusterAgent:
+  enabled: true
+  replicas: 1
+  
+  # Enable Admission Controller for auto-instrumentation
+  admissionController:
+    enabled: true
+    mutateUnlabelled: false
+```
+
+Then upgrade the Datadog agent:
+
+```bash
+helm upgrade datadog-agent -f values.yaml \
+  --set targetSystem=linux \
+  --set datadog.kubeStateMetricsEnabled=false \
+  --set 'datadog.env[0].name=DD_HOSTNAME' \
+  --set 'datadog.env[0].value=docker-desktop' \
+  datadog/datadog
+```
+
+Wait for the cluster agent to restart:
+
+```bash
+kubectl rollout status deployment/datadog-agent-cluster-agent
+```
+
+### Step 6: Deploy Swagstore Application
+
+**⚠️ IMPORTANT: Deploy the application AFTER the Datadog agent is fully running!**
 
 ```bash
 # For ARM64 (Mac M1/M2/M3/M4)
-skaffold run --default-repo docker.io/yourusername --platform=linux/arm64
+# Replace YOUR_DOCKERHUB_USERNAME with your Docker Hub username
+skaffold run --default-repo docker.io/YOUR_DOCKERHUB_USERNAME --platform=linux/arm64
 
 # For AMD64 (Intel Mac/PC)
-skaffold run --default-repo docker.io/yourusername --platform=linux/amd64
+skaffold run --default-repo docker.io/YOUR_DOCKERHUB_USERNAME --platform=linux/amd64
+
+# Example using the public images:
+# skaffold run --default-repo docker.io/smazzone --platform=linux/arm64
 ```
 
-### Step 6: View Data in Datadog
+**If you deployed the app before Datadog was ready**, restart the application pods:
+
+```bash
+# Restart all deployments to inject Datadog environment variables
+kubectl rollout restart deployment
+
+# Wait for pods to be ready
+kubectl wait --for=condition=ready pod --all --timeout=300s
+```
+
+### Step 7: Generate Traffic and Verify Traces
+
+Generate some traffic to the application:
+
+```bash
+# Port forward to access the frontend
+kubectl port-forward svc/frontend 8080:80
+
+# In another terminal, generate traffic
+for i in {1..20}; do 
+  curl -s http://localhost:8080 > /dev/null
+  echo "Request $i sent"
+  sleep 1
+done
+```
+
+Check if traces are being received (wait 2-3 minutes):
+
+```bash
+kubectl logs -l app=datadog-agent -c trace-agent --tail=10 | grep -v "No data received"
+```
+
+You should see messages like:
+- "Flushed X traces"
+- "Received X traces"
+
+### Step 8: View Data in Datadog
 
 Once the application is deployed and running:
 
@@ -485,6 +560,49 @@ If you have network issues pulling Datadog images, check Docker Hub connectivity
 ```bash
 docker pull gcr.io/datadoghq/agent:latest
 ```
+
+**No Traces or Logs Appearing in Datadog:**
+
+This usually means the application started before the Datadog agent was ready, or the Admission Controller isn't enabled.
+
+**Solution:**
+1. Verify Admission Controller is enabled:
+```bash
+kubectl get mutatingwebhookconfigurations | grep datadog
+```
+
+2. Check if DD_TRACE_AGENT_URL is injected:
+```bash
+kubectl describe pod -l app=frontend | grep DD_TRACE_AGENT_URL
+```
+
+3. If missing, restart application pods:
+```bash
+kubectl rollout restart deployment
+```
+
+4. Generate traffic and wait 2-3 minutes:
+```bash
+# Access the app at http://localhost:8080
+kubectl port-forward svc/frontend 8080:80
+
+# Generate traffic
+curl http://localhost:8080
+```
+
+5. Verify traces are being sent:
+```bash
+kubectl logs -l app=datadog-agent -c trace-agent --tail=20
+```
+
+**Deployment Order Issues:**
+
+Always follow this order:
+1. ✅ Install Datadog agent with Admission Controller
+2. ✅ Wait for agent to be ready (`kubectl get pods | grep datadog`)  
+3. ✅ Deploy your application
+4. ✅ Generate traffic
+5. ✅ Wait 2-3 minutes for data to appear in Datadog
 
 ### Cleanup Datadog
 

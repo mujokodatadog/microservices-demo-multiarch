@@ -63,8 +63,13 @@ helm install swagstore ./helm-chart \
 
 ```bash
 helm install swagstore ./helm-chart \
-  --set images.repository=docker.io/yourusername/swagstore \
+  --set images.repository=docker.io/YOUR_DOCKERHUB_USERNAME/swagstore \
   --set images.tag=latest
+
+# Example using the public images:
+# helm install swagstore ./helm-chart \
+#   --set images.repository=docker.io/smazzone \
+#   --set images.tag=b786477
 ```
 
 ## Configuration Options

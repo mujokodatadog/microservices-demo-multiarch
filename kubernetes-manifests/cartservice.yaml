@@ -55,6 +55,9 @@ spec:
         env:
         - name: REDIS_ADDR
           value: "redis-cart:6379"
+        # LAB: Uncomment to simulate latency (in milliseconds) for Datadog APM testing
+        - name: SIMULATE_LATENCY_MS
+          value: "2000"  # 2 seconds delay
         - name: DD_LOGS_INJECTION
           value: "true"
         - name: DD_TRACE_SAMPLE_RATE
