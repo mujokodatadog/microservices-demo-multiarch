@@ -257,6 +257,61 @@ Launch a local Kubernetes cluster with one of the following tools:
 If you've deployed the application with `skaffold run` command, you can run
 `skaffold delete` to clean up the deployed resources.
 
+  
+## Option 2: Google Kubernetes Engine (GKE)
+
+> 💡 Recommended if you're using Google Cloud Platform and want to try it on
+> a realistic cluster. **Note**: If your cluster has Workload Identity enabled, 
+> [see these instructions](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#enable)
+
+1.  Create a Google Kubernetes Engine cluster and make sure `kubectl` is pointing
+    to the cluster.
+
+    ```sh
+    gcloud services enable container.googleapis.com
+    ```
+
+    ```sh
+    gcloud container clusters create demo --enable-autoupgrade \
+        --enable-autoscaling --min-nodes=3 --max-nodes=10 --num-nodes=5 --zone=us-central1-a
+    ```
+
+    ```
+    kubectl get nodes
+    ```
+
+2.  Enable Google Container Registry (GCR) on your GCP project and configure the
+    `docker` CLI to authenticate to GCR:
+
+    ```sh
+    gcloud services enable containerregistry.googleapis.com
+    ```
+
+    ```sh
+    gcloud auth configure-docker -q
+    ```
+
+3.  In the root of this repository, run `skaffold run --default-repo=gcr.io/[PROJECT_ID]`,
+    where [PROJECT_ID] is your GCP project ID.
+
+    This command:
+
+    - builds the container images
+    - pushes them to GCR
+    - applies the `./kubernetes-manifests` deploying the application to
+      Kubernetes.
+
+    **Troubleshooting:** If you get "No space left on device" error on Google
+    Cloud Shell, you can build the images on Google Cloud Build: [Enable the
+    Cloud Build
+    API](https://console.cloud.google.com/flows/enableapi?apiid=cloudbuild.googleapis.com),
+    then run `skaffold run -p gcb --default-repo=gcr.io/[PROJECT_ID]` instead.
+
+4.  Find the IP address of your application, then visit the application on your
+    browser to confirm installation.
+
+        kubectl get service frontend-external
+
 
 ## Datadog Monitoring Setup
 
@@ -450,60 +505,6 @@ For production deployments, consider:
 
 See the [Datadog Kubernetes documentation](https://docs.datadoghq.com/containers/kubernetes/) for more details.
 
-  
-## Option 2: Google Kubernetes Engine (GKE)
-
-> 💡 Recommended if you're using Google Cloud Platform and want to try it on
-> a realistic cluster. **Note**: If your cluster has Workload Identity enabled, 
-> [see these instructions](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#enable)
-
-1.  Create a Google Kubernetes Engine cluster and make sure `kubectl` is pointing
-    to the cluster.
-
-    ```sh
-    gcloud services enable container.googleapis.com
-    ```
-
-    ```sh
-    gcloud container clusters create demo --enable-autoupgrade \
-        --enable-autoscaling --min-nodes=3 --max-nodes=10 --num-nodes=5 --zone=us-central1-a
-    ```
-
-    ```
-    kubectl get nodes
-    ```
-
-2.  Enable Google Container Registry (GCR) on your GCP project and configure the
-    `docker` CLI to authenticate to GCR:
-
-    ```sh
-    gcloud services enable containerregistry.googleapis.com
-    ```
-
-    ```sh
-    gcloud auth configure-docker -q
-    ```
-
-3.  In the root of this repository, run `skaffold run --default-repo=gcr.io/[PROJECT_ID]`,
-    where [PROJECT_ID] is your GCP project ID.
-
-    This command:
-
-    - builds the container images
-    - pushes them to GCR
-    - applies the `./kubernetes-manifests` deploying the application to
-      Kubernetes.
-
-    **Troubleshooting:** If you get "No space left on device" error on Google
-    Cloud Shell, you can build the images on Google Cloud Build: [Enable the
-    Cloud Build
-    API](https://console.cloud.google.com/flows/enableapi?apiid=cloudbuild.googleapis.com),
-    then run `skaffold run -p gcb --default-repo=gcr.io/[PROJECT_ID]` instead.
-
-4.  Find the IP address of your application, then visit the application on your
-    browser to confirm installation.
-
-        kubectl get service frontend-external
 
 ## Local Development
 
