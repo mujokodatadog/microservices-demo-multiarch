@@ -126,11 +126,11 @@ function getSupportedCurrencies (call, callback) {
  */
 function convert (call, callback) {
   try {
-    logger.info(`conversion request Started Delayed`);
-    setTimeout(() => {
-      logger.info(`conversion request Completed Delayed`);
-    }, 10000);
-    logger.info(`conversion request Stop Delayed`);
+    // logger.info(`conversion request Started Delayed`);
+    // setTimeout(() => {
+    //   logger.info(`conversion request Completed Delayed`);
+    // }, 10000);
+    // logger.info(`conversion request Stop Delayed`);
     _getCurrencyData((data) => {
       const request = call.request;
 
