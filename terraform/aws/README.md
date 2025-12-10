@@ -301,13 +301,139 @@ After a few minutes, check [Datadog](https://app.datadoghq.com):
 - **APM** → **Services** → See microservices traces
 - **Logs** → **Live Tail** → View container logs
 
+## NGINX Ingress with Rate Limiting (Optional)
+
+Deploy NGINX Ingress Controller to add rate limiting at the ingress level. This returns HTTP 429 errors when limits are exceeded, visible in Datadog APM.
+
+### Step 1: Install NGINX Ingress Controller
+
+```bash
+# Add NGINX Ingress Helm repository
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+# Install NGINX Ingress Controller
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer
+```
+
+### Step 2: Wait for Load Balancer
+
+```bash
+# Wait for the ingress controller to get an external IP
+kubectl get svc -n ingress-nginx ingress-nginx-controller -w
+
+# Get the external hostname
+INGRESS_HOST=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo "Ingress URL: http://$INGRESS_HOST"
+```
+
+### Step 3: Create Ingress with Rate Limiting
+
+Create a file `frontend-ingress.yaml`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  annotations:
+    # Rate limiting configuration (aggressive values for testing)
+    nginx.ingress.kubernetes.io/limit-rps: "1"                # 1 request per second per IP
+    nginx.ingress.kubernetes.io/limit-connections: "1"         # 1 concurrent connection per IP
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "1"    # No burst allowance (critical!)
+    # Note: Rate-limited requests return HTTP 503 by default
+    # Optional: Whitelist internal IPs from rate limiting
+    # nginx.ingress.kubernetes.io/limit-whitelist: "10.0.0.0/8,172.16.0.0/12"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
+```
+
+> **Note**: The `server-snippet` annotation for custom 429 status codes is disabled by default in NGINX Ingress Controller v1.9+. Rate-limited requests will return HTTP 503.
+
+Apply the ingress:
+
+```bash
+kubectl apply -f frontend-ingress.yaml
+```
+
+### Step 4: Update Frontend Service (Optional)
+
+If you want to use only the Ingress (disable direct LoadBalancer access):
+
+```bash
+# Patch frontend-external to ClusterIP (removes direct LB access)
+kubectl patch svc frontend-external -p '{"spec": {"type": "ClusterIP"}}'
+```
+
+### Step 5: Test Rate Limiting
+
+**Important**: Sequential curl requests are too slow to trigger rate limiting. Use parallel requests:
+
+```bash
+# Get ingress URL
+INGRESS_HOST=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Option A: Using hey (recommended - install with: brew install hey)
+hey -n 50 -c 10 "http://$INGRESS_HOST/"
+
+# Option B: Using curl with parallel requests
+for i in {1..20}; do
+  curl -s -o /dev/null -w "%{http_code}\n" "http://$INGRESS_HOST/" &
+done
+wait
+```
+
+You should see `200` responses initially, then `503` when rate limited.
+
+### Step 6: Verify in Datadog
+
+After triggering rate limits:
+
+1. Go to **APM** → **Traces**
+2. Filter: `@http.status_code:503`
+3. See rate-limited requests from NGINX Ingress
+
+### Rate Limiting Options
+
+| Annotation | Description | Example |
+|------------|-------------|---------|
+| `limit-rps` | Requests per second per IP | `1` |
+| `limit-connections` | Concurrent connections per IP | `1` |
+| `limit-burst-multiplier` | Burst multiplier (set to 1 to disable) | `1` |
+| `limit-whitelist` | IPs to exclude from limits | `10.0.0.0/8` |
+
+### Remove NGINX Ingress
+
+```bash
+kubectl delete ingress frontend-ingress
+helm uninstall ingress-nginx -n ingress-nginx
+kubectl delete namespace ingress-nginx
+```
+
 ## Cleanup
 
 To destroy all AWS resources:
 
 ```bash
-# First, delete Datadog agent (if installed)
-helm uninstall datadog-agent
+# Delete NGINX Ingress (if installed)
+kubectl delete ingress frontend-ingress 2>/dev/null
+helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null
+
+# Delete Datadog agent (if installed)
+helm uninstall datadog-agent 2>/dev/null
 
 # Delete Kubernetes application resources (from project root)
 cd ../..

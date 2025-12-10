@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  # annotations:
+  #   # Rate limiting configuration (aggressive values for testing)
+  #   nginx.ingress.kubernetes.io/limit-rps: "10"                # 1 request per second per IP
+  #   nginx.ingress.kubernetes.io/limit-connections: "10"         # 1 concurrent connection per IP
+  #   nginx.ingress.kubernetes.io/limit-burst-multiplier: "10"    # No burst allowance (critical!)
+    # Note: Rate-limited requests return HTTP 503 by default
+    # Optional: Whitelist internal IPs from rate limiting
+    # nginx.ingress.kubernetes.io/limit-whitelist: "10.0.0.0/8,172.16.0.0/12"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
